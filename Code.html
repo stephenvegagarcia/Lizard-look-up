@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cochise Lizard Explorer | Secure</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #0a0a0a; color: #ffffff; }
+        .glass { background: rgba(23, 23, 23, 0.8); backdrop-filter: blur(12px); }
+        .lizard-card:hover { border-color: #10b981; transform: translateY(-4px); }
+        .secure-pulse { animation: pulse 2s infinite; }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+    </style>
+</head>
+<body class="selection:bg-emerald-500/30">
+
+    <!-- Header -->
+    <nav class="sticky top-0 z-40 glass border-b border-neutral-800 p-4">
+        <div class="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="flex items-center gap-3">
+                <div class="bg-emerald-500 p-2 rounded-lg text-black">
+                    <i data-lucide="shield-check"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-black italic uppercase leading-none text-white">Lizard <span class="text-emerald-500">Secure</span></h1>
+                    <p id="locationStatus" class="text-[10px] text-neutral-500 font-bold uppercase tracking-widest mt-1 flex items-center gap-1">
+                        <i data-lucide="lock" class="w-2 h-2"></i> Initializing Secure Connection...
+                    </p>
+                </div>
+            </div>
+            
+            <div class="flex items-center gap-2 w-full md:w-auto">
+                <div class="relative flex-grow md:w-64">
+                    <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500 w-4 h-4"></i>
+                    <input 
+                        type="text" 
+                        id="searchInput"
+                        class="bg-neutral-800 rounded-full py-2 pl-10 pr-4 text-sm border-none w-full focus:ring-2 focus:ring-emerald-500 outline-none"
+                        placeholder="Search species..."
+                    >
+                </div>
+                <button id="geoBtn" onclick="getUserLocation()" class="bg-emerald-500 hover:bg-emerald-400 text-black p-2 rounded-full transition-all group relative">
+                    <i data-lucide="map-pin" class="w-5 h-5"></i>
+                    <span class="absolute top-12 right-0 bg-black text-white text-[10px] p-2 rounded hidden group-hover:block w-32 text-center">Use Live GPS</span>
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Loading State -->
+    <div id="loader" class="flex flex-col items-center justify-center min-h-[60vh]">
+        <div class="animate-spin text-emerald-500 mb-4">
+            <i data-lucide="loader-2" class="w-10 h-10"></i>
+        </div>
+        <p class="font-mono tracking-widest text-neutral-400 uppercase">Verifying Encrypted Data...</p>
+    </div>
+
+    <!-- Main Grid -->
+    <main class="max-w-6xl mx-auto p-6">
+        <div id="lizardGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 opacity-0 transition-opacity duration-500">
+            <!-- Cards will be injected here -->
+        </div>
+    </main>
+
+    <!-- Modal Template -->
+    <div id="modalOverlay" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/95 backdrop-blur-sm hidden opacity-0 transition-opacity duration-200">
+        <div id="modalContent" class="bg-neutral-900 border border-neutral-800 w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl scale-95 transition-transform duration-200">
+            <!-- Details injected here -->
+        </div>
+    </div>
+
+    <script>
+        const TAXON_ID = 26036; 
+        const DEFAULT_PLACE_ID = 2043; // Cochise County
+        let speciesData = [];
+        let currentMode = "static"; // static or gps
+
+        function initIcons() {
+            lucide.createIcons();
+        }
+
+        // Check if connection is secure
+        function checkSecurity() {
+            const status = document.getElementById('locationStatus');
+            if (window.location.protocol === 'https:') {
+                status.innerHTML = '<i data-lucide="shield-check" class="text-emerald-500 w-3 h-3"></i> HTTPS Secure Connection';
+                status.classList.add('text-emerald-500');
+            } else {
+                status.innerHTML = '<i data-lucide="alert-triangle" class="text-amber-500 w-3 h-3"></i> Unsecured (HTTP). Location disabled.';
+                document.getElementById('geoBtn').disabled = true;
+                document.getElementById('geoBtn').style.opacity = '0.5';
+            }
+            initIcons();
+        }
+
+        // Fetch Data Function
+        async function fetchData(params = "") {
+            document.getElementById('loader').classList.remove('hidden');
+            document.getElementById('lizardGrid').classList.add('opacity-0');
+            
+            try {
+                const url = `https://api.inaturalist.org/v1/observations/species_counts?taxon_id=${TAXON_ID}${params}`;
+                const response = await fetch(url);
+                const data = await response.json();
+                speciesData = data.results || [];
+                renderLizards(speciesData);
+                document.getElementById('loader').classList.add('hidden');
+                document.getElementById('lizardGrid').classList.remove('opacity-0');
+            } catch (err) {
+                console.error("API Error:", err);
+                document.getElementById('loader').innerHTML = '<p class="text-red-500 text-center uppercase">Secure Handshake Failed.</p>';
+            }
+        }
+
+        // Get GPS Location
+        function getUserLocation() {
+            const status = document.getElementById('locationStatus');
+            status.innerHTML = '<i data-lucide="refresh-cw" class="animate-spin w-3 h-3"></i> Requesting GPS Access...';
+            initIcons();
+
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const lat = position.coords.latitude;
+                        const lng = position.coords.longitude;
+                        status.innerHTML = `<i data-lucide="map-pin" class="text-emerald-500 w-3 h-3"></i> GPS Locked: ${lat.toFixed(2)}, ${lng.toFixed(2)}`;
+                        status.classList.add('text-emerald-500');
+                        document.getElementById('geoBtn').classList.add('secure-pulse');
+                        // Search within 15km of GPS coords
+                        fetchData(`&lat=${lat}&lng=${lng}&radius=15`);
+                        initIcons();
+                    },
+                    (error) => {
+                        status.innerHTML = '<i data-lucide="x-circle" class="text-red-500 w-3 h-3"></i> Access Denied by User';
+                        initIcons();
+                    }
+                );
+            }
+        }
+
+        function renderLizards(list) {
+            const grid = document.getElementById('lizardGrid');
+            grid.innerHTML = list.map(item => {
+                const taxon = item.taxon;
+                const name = taxon.preferred_common_name || taxon.name;
+                const image = taxon.default_photo?.medium_url || 'https://images.unsplash.com/photo-1545239351-ef35f43d514b?q=80&w=400';
+                
+                return `
+                    <div class="lizard-card bg-neutral-900 rounded-2xl overflow-hidden border border-neutral-800 transition-all cursor-pointer flex flex-col h-full" 
+                         onclick="openModal(${taxon.id})">
+                        <div class="relative aspect-video overflow-hidden">
+                            <img src="${image}" class="w-full h-full object-cover grayscale-[0.2] hover:grayscale-0 transition-all duration-500" alt="${name}">
+                            <div class="absolute top-3 right-3 bg-black/70 backdrop-blur px-2 py-1 rounded text-[10px] font-bold text-emerald-400 border border-emerald-500/30">
+                                ${item.count} Samples
+                            </div>
+                        </div>
+                        <div class="p-4 flex-grow flex flex-col">
+                            <h3 class="font-bold text-white uppercase tracking-tighter">${name}</h3>
+                            <p class="text-[10px] text-neutral-500 font-mono italic mb-4">${taxon.name}</p>
+                            <button class="mt-auto w-full border border-neutral-800 hover:bg-emerald-500 hover:text-black transition-all py-2 rounded-lg text-[10px] font-black uppercase tracking-widest">
+                                View Intelligence
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            initIcons();
+        }
+
+        function openModal(taxonId) {
+            const item = speciesData.find(s => s.taxon.id === taxonId);
+            if (!item) return;
+
+            const taxon = item.taxon;
+            const name = taxon.preferred_common_name || taxon.name;
+            const image = taxon.default_photo?.medium_url?.replace("medium", "large") || taxon.default_photo?.medium_url;
+
+            document.getElementById('modalContent').innerHTML = `
+                <div class="relative aspect-video">
+                    <img src="${image}" class="w-full h-full object-cover" alt="${name}">
+                    <button onclick="closeModal()" class="absolute top-4 right-4 bg-black/60 p-2 rounded-full border border-white/10">
+                        <i data-lucide="x" class="w-5 h-5 text-white"></i>
+                    </button>
+                </div>
+                <div class="p-6">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="bg-emerald-500 text-black text-[9px] font-black px-2 py-0.5 rounded uppercase">Verified Data</span>
+                        <span class="text-neutral-500 text-[9px] font-mono">ID: ${taxon.id}</span>
+                    </div>
+                    <h2 class="text-3xl font-black italic uppercase text-white tracking-tighter">${name}</h2>
+                    <p class="text-emerald-500 font-mono text-xs italic mb-6">${taxon.name}</p>
+                    
+                    <div class="bg-black/40 p-5 rounded-2xl border border-white/5 mb-6">
+                        <h4 class="text-[10px] uppercase font-black text-neutral-500 tracking-widest mb-2">Encrypted Field Note</h4>
+                        <p class="text-xs text-neutral-400 leading-relaxed italic">Intelligence suggests this specimen is active in the current geolocation zone. Native to high desert scrub and rocky slopes.</p>
+                    </div>
+
+                    <div class="flex gap-3">
+                        <button onclick="shareLizard(${taxon.id})" class="flex-1 bg-white hover:bg-emerald-400 text-black py-4 rounded-xl font-black uppercase text-[10px] tracking-widest transition-all flex items-center justify-center gap-2">
+                            <i data-lucide="share-2" class="w-3 h-3"></i> Transmit Coordinates
+                        </button>
+                        <a href="https://www.inaturalist.org/taxa/${taxon.id}" target="_blank" class="bg-neutral-800 p-4 rounded-xl text-emerald-500">
+                            <i data-lucide="external-link" class="w-5 h-5"></i>
+                        </a>
+                    </div>
+                </div>
+            `;
+            
+            const overlay = document.getElementById('modalOverlay');
+            overlay.classList.remove('hidden');
+            setTimeout(() => {
+                overlay.classList.add('opacity-100');
+                document.getElementById('modalContent').classList.remove('scale-95');
+            }, 10);
+            initIcons();
+        }
+
+        function closeModal() {
+            const overlay = document.getElementById('modalOverlay');
+            overlay.classList.remove('opacity-100');
+            setTimeout(() => overlay.classList.add('hidden'), 200);
+        }
+
+        async function shareLizard(taxonId) {
+            const item = speciesData.find(s => s.taxon.id === taxonId);
+            const name = item.taxon.preferred_common_name || item.taxon.name;
+            const data = {
+                title: `${name} Security Report`,
+                text: `Verified ${name} spotted in Cochise Sector. View data:`,
+                url: `https://www.inaturalist.org/taxa/${taxonId}`
+            };
+
+            if (navigator.share) {
+                try { await navigator.share(data); } catch(e) {}
+            } else {
+                navigator.clipboard.writeText(data.url);
+                alert('Secure Link Copied');
+            }
+        }
+
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            const term = e.target.value.toLowerCase();
+            const filtered = speciesData.filter(item => {
+                const name = (item.taxon.preferred_common_name || item.taxon.name).toLowerCase();
+                return name.includes(term);
+            });
+            renderLizards(filtered);
+        });
+
+        window.onload = () => {
+            checkSecurity();
+            fetchData(`&place_id=${DEFAULT_PLACE_ID}`); // Start with Cochise by default
+        };
+    </script>
+</body>
+</html>
+
